@@ -1,329 +1,47 @@
-
-// AdminPages.jsx
-// Replace ONLY the existing AllQueues function.
-// Keep all other functions and imports unchanged.
-
-export function AllQueues() {
-  const toast = useToast();
-
-  const [status, setStatus] = useState('');
-  const [search, setSearch] = useState('');
-  const [date, setDate] = useState('');
-  const [page, setPage] = useState(1);
-
-  const limit = 20;
-
-  const params = new URLSearchParams({
-    page: String(page),
-    limit: String(limit)
-  });
-
-  if (status) {
-    params.set('status', status);
-  }
-
-  if (search.trim()) {
-    params.set('search', search.trim());
-  }
-
-  if (date) {
-    params.set('date', date);
-  }
-
-  // Fetch all dates by default.
-  // Automatically refresh every 5 seconds.
-  const {
-    data,
-    loading,
-    error,
-    refresh
-  } = useRemote(
-    `/queues?${params.toString()}`,
-    5000
-  );
-
-  const tickets = Array.isArray(data?.items)
-    ? data.items
-    : [];
-
-  const total = Number(data?.total || 0);
-
-  const totalPages = Math.max(
-    1,
-    Math.ceil(total / limit)
-  );
-
-  const changeStatus = (value) => {
-    setStatus(value);
-    setPage(1);
-  };
-
-  const changeSearch = (value) => {
-    setSearch(value);
-    setPage(1);
-  };
-
-  const changeDate = (value) => {
-    setDate(value);
-    setPage(1);
-  };
-
-  const clearFilters = () => {
-    setStatus('');
-    setSearch('');
-    setDate('');
-    setPage(1);
-  };
-
-  const updatePriority = async (ticket, value) => {
-    try {
-      await request(
-        'patch',
-        `/queues/${ticket.id}/priority`,
-        {
-          priority_level: Number(value)
-        }
-      );
-
-      toast('Ticket priority updated.');
-      refresh();
-
-    } catch (err) {
-      toast(getError(err), 'error');
-    }
-  };
-
-  return (
-    <>
-      <PageHeading
-        title="All Queues & Transaction History"
-        subtitle="Monitor active, completed, skipped, and cancelled registrar transactions."
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={clearFilters}
-            >
-              Clear Filters
-            </button>
-
-            <RefreshButton onClick={refresh} />
-          </div>
-        }
-      />
-
-      <ErrorBox
-        message={error}
-        retry={refresh}
-      />
-
-      <Card>
-        {/* FILTER SECTION */}
-
-        <div className="grid gap-3 p-5 md:grid-cols-4">
-          <div className="md:col-span-2">
-            <SearchField
-              value={search}
-              onChange={changeSearch}
-              placeholder="Search ticket, student name, or student number"
-            />
-          </div>
-
-          <select
-            className="field"
-            value={status}
-            onChange={(e) => changeStatus(e.target.value)}
-          >
-            <option value="">All Statuses</option>
-            <option value="waiting">Waiting</option>
-            <option value="called">Called</option>
-            <option value="serving">Serving</option>
-            <option value="completed">Completed</option>
-            <option value="skipped">Skipped</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-
-          <div className="flex gap-2">
-            <input
-              className="field"
-              type="date"
-              aria-label="Queue date"
-              value={date}
-              onChange={(e) => changeDate(e.target.value)}
-            />
-
-            {date && (
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => changeDate('')}
-              >
-                All Dates
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* SUMMARY BAR */}
-
-        <div className="flex flex-wrap items-center justify-between gap-3 border-y border-primary-100 bg-primary-50 px-5 py-3">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-bold text-primary-800">
-              {status
-                ? `${status.charAt(0).toUpperCase()}${status.slice(1)} Transactions`
-                : 'All Transactions'}
-            </span>
-
-            <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-primary-700">
-              {total}
-            </span>
-          </div>
-
-          <span className="text-xs text-slate-500">
-            {date || 'All Dates'} · Updates every 5 seconds
-          </span>
-        </div>
-
-        {/* TRANSACTIONS TABLE */}
-
-        {loading ? (
-          <Spinner />
-        ) : tickets.length > 0 ? (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Ticket Number</th>
-                  <th>Student</th>
-                  <th>Service</th>
-                  <th>Counter</th>
-                  <th>Status</th>
-                  <th>Priority</th>
-                  <th>Created</th>
-                  <th>Completed</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {tickets.map((q) => (
-                  <tr key={q.id}>
-                    <td className="font-bold !text-primary-700">
-                      {q.queue_number}
-                    </td>
-
-                    <td>
-                      <div className="font-semibold text-slate-800">
-                        {q.student_name || '—'}
-                      </div>
-
-                      <div className="text-xs text-slate-500">
-                        {q.student_number || '—'}
-                      </div>
-                    </td>
-
-                    <td>
-                      {q.service_name || '—'}
-                    </td>
-
-                    <td>
-                      {q.counter_number
-                        ? `Counter ${q.counter_number}`
-                        : '—'}
-                    </td>
-
-                    <td>
-                      <Badge value={q.status} />
-                    </td>
-
-                    <td>
-                      {q.status === 'waiting' ? (
-                        <select
-                          className="field !w-auto !py-1.5"
-                          value={Number(q.priority_level || 0)}
-                          aria-label={`Priority for ${q.queue_number}`}
-                          onChange={(e) =>
-                            updatePriority(q, e.target.value)
-                          }
-                        >
-                          <option value={0}>Normal</option>
-                          <option value={1}>Priority</option>
-                          <option value={2}>Urgent</option>
-                        </select>
-                      ) : (
-                        Number(q.priority_level) === 2
-                          ? 'Urgent'
-                          : Number(q.priority_level) === 1
-                            ? 'Priority'
-                            : 'Normal'
-                      )}
-                    </td>
-
-                    <td className="whitespace-nowrap">
-                      {q.created_at
-                        ? shortDate(q.created_at)
-                        : '—'}
-                    </td>
-
-                    <td className="whitespace-nowrap">
-                      {q.completed_at
-                        ? shortDate(q.completed_at)
-                        : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <Empty
-            title="No matching transactions"
-            text="No records found. Try another status, date, or search."
-          />
-        )}
-
-        {/* PAGINATION */}
-
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-primary-100 px-5 py-4">
-          <span className="text-sm text-slate-500">
-            Showing{' '}
-            {total === 0 ? 0 : (page - 1) * limit + 1}
-            {' - '}
-            {Math.min(page * limit, total)}
-            {' of '}
-            {number(total)}
-            {' transactions'}
-          </span>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="btn-secondary"
-              disabled={page <= 1}
-              onClick={() =>
-                setPage((p) => Math.max(1, p - 1))
-              }
-            >
-              Previous
-            </button>
-
-            <span className="px-3 text-sm font-semibold text-primary-800">
-              Page {page} of {totalPages}
-            </span>
-
-            <button
-              type="button"
-              className="btn-secondary"
-              disabled={page >= totalPages}
-              onClick={() =>
-                setPage((p) => Math.min(totalPages, p + 1))
-              }
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      </Card>
-    </>
-  );
+import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Activity, AlertTriangle, ArrowDownToLine, ArrowRight, BarChart3, BookOpen, CheckCircle2, Clock3, FileText, Monitor, Pencil, Plus, ShieldCheck, Ticket, Timer, Trash2, UserRoundCog, Users, UsersRound } from 'lucide-react';
+import { ResponsiveContainer, LineChart, Line, CartesianGrid, Tooltip, XAxis, YAxis, BarChart, Bar } from 'recharts';
+import { api, API_BASE, getError, request } from '../lib/api';
+import { useRemote, shortDate, number } from '../lib/hooks';
+import { useToast } from '../contexts/ToastContext';
+import { ActionForm, Badge, Card, Empty, ErrorBox, Field, Modal, PageHeading, RefreshButton, SearchField, SelectField, Spinner, Stat } from '../components/UI';
+const BlankCell=()=> <span className="text-slate-300">—</span>;
+const val=(x)=>x ?? '—';
+const table=(heads,rows,render)=> <div className="table-wrap"><table className="data-table"><thead><tr>{heads.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map(render)}</tbody></table></div>;
+export function AdminDashboard() {
+  const {data,loading,error,refresh}=useRemote('/dashboard/admin',12000);
+  const stats=data?.stats||{};
+  return <><PageHeading title="Good day, Administrator 👋" subtitle="Here's what's happening at your registrar office today." actions={<RefreshButton onClick={()=>refresh()}/>}/><ErrorBox message={error} retry={refresh}/>{loading?<Spinner/>:<>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Stat icon={Ticket} label="Tickets Today" value={number(stats.total)} note="All registrar services"/><Stat icon={UsersRound} label="Currently Waiting" value={number(stats.waiting)} color="amber" note="Students in line"/><Stat icon={Activity} label="Now Serving" value={number(stats.serving)} color="violet" note={`${number(stats.called)} called`}/><Stat icon={CheckCircle2} label="Completed Today" value={number(stats.completed)} color="green" note="Successfully processed"/></div>
+    <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Stat icon={Clock3} label="Average Wait" value={`${Math.round(Number(stats.avg_wait||0))} min`} note="Before first call"/><Stat icon={Timer} label="Average Processing" value={`${Math.round(Number(stats.avg_process||0))} min`} color="amber" note="Start to completion"/><Stat icon={UserRoundCog} label="Active Staff" value={data?.active_staff} color="green"/><Stat icon={Monitor} label="Active Counters" value={data?.active_counters} color="violet"/></div>
+    <div className="mt-6 grid gap-6 xl:grid-cols-5"><Card title="Queue Activity · Last 7 Days" className="xl:col-span-3"><div className="h-72 p-5">{data?.trend?.length?<ResponsiveContainer width="100%" height="100%"><LineChart data={data.trend}><CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false}/><XAxis dataKey="day" tick={{fontSize:10}} tickFormatter={d=>d.slice(5)}/><YAxis tick={{fontSize:11}} allowDecimals={false}/><Tooltip/><Line dataKey="tickets" type="monotone" stroke="#0284c7" strokeWidth={3} dot={{r:4}} name="Tickets"/><Line dataKey="completed" type="monotone" stroke="#10b981" strokeWidth={2} name="Completed"/></LineChart></ResponsiveContainer>:<Empty title="No queue activity" text="Ticket activity will appear here."/>}</div></Card><Card title="Popular Services · Today" className="xl:col-span-2"><div className="h-72 p-5">{data?.services?.some(x=>Number(x.value)>0)?<ResponsiveContainer width="100%" height="100%"><BarChart data={data.services.slice(0,6)} layout="vertical" margin={{left:10,right:8}}><CartesianGrid stroke="#eef2f7" horizontal={false}/><XAxis type="number" allowDecimals={false} tick={{fontSize:11}}/><YAxis dataKey="name" type="category" width={122} tick={{fontSize:10}}/><Tooltip/><Bar dataKey="value" fill="#38bdf8" radius={[0,6,6,0]} name="Tickets"/></BarChart></ResponsiveContainer>:<Empty title="No service data"/>}</div></Card></div>
+    <div className="mt-6 grid gap-6 xl:grid-cols-3"><Card title="Recent Transactions" className="xl:col-span-2" right={<Link className="text-xs font-semibold text-primary-600" to="/admin/queues">View all <ArrowRight className="inline" size={14}/></Link>}>{data?.recent?.length?table(['Ticket','Student','Service','Status','Time'],data.recent,q=><tr key={q.id}><td className="font-bold !text-primary-700">{q.queue_number}</td><td>{q.student_name}</td><td>{q.service_name}</td><td><Badge value={q.status}/></td><td>{shortDate(q.created_at)}</td></tr>):<Empty/>}</Card><Card title="Quick Actions"><div className="space-y-3 p-5">{[[UserRoundCog,'Manage staff accounts','/admin/staff'],[BookOpen,'Manage services','/admin/services'],[Monitor,'Configure counters','/admin/counters'],[BarChart3,'View reports','/admin/reports']].map(([Icon,label,link])=><Link key={label} to={link} className="flex items-center justify-between rounded-xl border border-slate-100 p-4 hover:border-primary-200 hover:bg-primary-50"><span className="flex items-center gap-3 text-sm font-semibold"><Icon className="text-primary-600" size={19}/>{label}</span><ArrowRight size={17} className="text-slate-400"/></Link>)}</div></Card></div>
+  </>}</>;
 }
+const staffBlank={full_name:'',username:'',email:'',employee_number:'',counter_id:'',password:''};
+export function StaffManagement(){
+  const {data:staff,loading,error,refresh}=useRemote('/staff');const {data:counters}=useRemote('/counters');const toast=useToast();const [search,setSearch]=useState('');const [edit,setEdit]=useState(null);const [form,setForm]=useState(staffBlank);const [busy,setBusy]=useState(false);const [reset,setReset]=useState(null);
+  const filtered=(staff||[]).filter(s=>(s.full_name+s.employee_number+s.username+s.email).toLowerCase().includes(search.toLowerCase()));
+  const open=(item=null)=>{setEdit(item||'new');setForm(item?{full_name:item.full_name,username:item.username,email:item.email,employee_number:item.employee_number,counter_id:item.counter_id||'',password:''}:staffBlank);};
+  const update=e=>setForm(f=>({...f,[e.target.name]:e.target.value}));
+  const save=async e=>{e.preventDefault();setBusy(true);try{await request(edit==='new'?'post':'put',edit==='new'?'/staff':`/staff/${edit.id}`,form);toast(edit==='new'?'Staff account created.':'Staff account updated.');setEdit(null);refresh();}catch(err){toast(getError(err),'error');}finally{setBusy(false);}};
+  const status=async s=>{if(!window.confirm(`${s.status==='active'?'Deactivate':'Activate'} ${s.full_name}?`))return;try{await request('patch',`/staff/${s.id}/status`,{status:s.status==='active'?'inactive':'active'});toast('Status updated.');refresh();}catch(e){toast(getError(e),'error');}};
+  return <><PageHeading title="Staff Management" subtitle="Create accounts, assign counters, and control staff access." actions={<button className="btn-primary" onClick={()=>open()}><Plus size={17}/> Add Staff</button>}/><ErrorBox message={error} retry={refresh}/><Card><div className="flex flex-wrap items-center justify-between gap-3 p-5"><div className="w-full max-w-md"><SearchField value={search} onChange={setSearch} placeholder="Search staff by name, employee ID, or email"/></div><div className="text-sm text-slate-500">{filtered.length} staff members</div></div>{loading?<Spinner/>:filtered.length?table(['Staff member','Employee ID','Counter','Status','Actions'],filtered,s=><tr key={s.id}><td><div className="font-semibold text-slate-800">{s.full_name}</div><div className="text-xs">{s.email} · @{s.username}</div></td><td>{s.employee_number}</td><td>{s.counter_name||<BlankCell/>}</td><td><Badge value={s.status}/></td><td><div className="flex flex-wrap gap-2"><button className="btn-secondary !px-3 !py-1.5" onClick={()=>open(s)}>Edit</button><button className="btn-secondary !px-3 !py-1.5" onClick={()=>setReset({kind:'staff',item:s})}>Reset</button><button className={`${s.status==='active'?'btn-danger':'btn-secondary'} !px-3 !py-1.5`} onClick={()=>status(s)}>{s.status==='active'?'Disable':'Enable'}</button></div></td></tr>):<Empty title="No staff accounts found" text="Add your first staff account to begin."/>}</Card>
+  {edit&&<Modal title={edit==='new'?'Create Staff Account':'Edit Staff Account'} onClose={()=>setEdit(null)}><ActionForm submit={save} busy={busy} label={edit==='new'?'Create staff':'Save staff'} cancel={()=>setEdit(null)}><div className="grid gap-4 sm:grid-cols-2"><Field label="Full name" name="full_name" value={form.full_name} onChange={update} required/><Field label="Employee ID" name="employee_number" value={form.employee_number} onChange={update} required/></div><Field label="Username" name="username" value={form.username} onChange={update} required/><Field label="Email" name="email" type="email" value={form.email} onChange={update} required/><SelectField label="Assigned counter" name="counter_id" value={form.counter_id} onChange={update}><option value="">No assignment</option>{(counters||[]).filter(c=>Number(c.is_active)).map(c=><option key={c.id} value={c.id}>{c.counter_name} · {c.counter_number}</option>)}</SelectField>{edit==='new'&&<Field label="Temporary password (10+ characters)" name="password" type="password" minLength={10} value={form.password} onChange={update} required/>}<p className="text-xs leading-5 text-slate-400">New staff must change their temporary password on first login. Share credentials privately.</p></ActionForm></Modal>}
+  {reset&&<PasswordReset target={reset} close={()=>setReset(null)} onSaved={refresh}/>}
+  </>;
+}
+function PasswordReset({target,close,onSaved}){const [password,setPassword]=useState('');const [busy,setBusy]=useState(false);const toast=useToast();return <Modal title={`Reset password: ${target.item.full_name}`} onClose={close}><form className="space-y-5" onSubmit={async e=>{e.preventDefault();setBusy(true);try{await request('post',`/${target.kind==='staff'?'staff':'students'}/${target.item.id}/reset-password`,{new_password:password});toast('Temporary password updated. Share it securely.');close();onSaved?.();}catch(err){toast(getError(err),'error');}finally{setBusy(false);}}}><p className="text-sm text-slate-500">Set a temporary password. The user will be required to change it at their next login.</p><Field label="Temporary password (10+ characters)" value={password} onChange={e=>setPassword(e.target.value)} minLength={10} type="password" required/><div className="flex justify-end gap-2"><button className="btn-secondary" type="button" onClick={close}>Cancel</button><button className="btn-primary" disabled={busy}>{busy?'Resetting...':'Save temporary password'}</button></div></form></Modal>}
+export function StudentManagement(){const {data,loading,error,refresh}=useRemote('/students');const [search,setSearch]=useState('');const [reset,setReset]=useState(null);const toast=useToast();const filtered=(data||[]).filter(s=>(s.full_name+s.student_number+s.program).toLowerCase().includes(search.toLowerCase()));const verify=async s=>{try{await request('patch',`/students/${s.id}/verification`,{verification_status:s.verification_status==='verified'?'pending':'verified'});toast('Verification updated.');refresh();}catch(e){toast(getError(e),'error');}};return <><PageHeading title="Students" subtitle="Monitor student registrations and verify identities."/><ErrorBox message={error} retry={refresh}/><Card><div className="max-w-lg p-5"><SearchField value={search} onChange={setSearch} placeholder="Search student number, program, or name"/></div>{loading?<Spinner/>:filtered.length?table(['Student','Student Number','Program / Year','Verification','Actions'],filtered,s=><tr key={s.id}><td><div className="font-semibold text-slate-800">{s.full_name}</div><div className="text-xs">{s.email}</div></td><td>{s.student_number}</td><td>{s.program}<div className="text-xs">{s.year_level}</div></td><td><Badge value={s.verification_status}/></td><td><div className="flex gap-2"><button onClick={()=>verify(s)} className="btn-secondary !px-3 !py-1.5">{s.verification_status==='verified'?'Unverify':'Verify'}</button><button onClick={()=>setReset({kind:'student',item:s})} className="btn-secondary !px-3 !py-1.5">Reset PW</button></div></td></tr>):<Empty title="No students found"/>}</Card>{reset&&<PasswordReset target={reset} close={()=>setReset(null)} onSaved={refresh}/>}</>}
+const serviceBlank={service_code:'',service_name:'',description:'',queue_prefix:'',estimated_minutes:10,is_active:1};
+export function ServicesManagement(){const {data,loading,error,refresh}=useRemote('/admin/services');const [edit,setEdit]=useState(null);const [form,setForm]=useState(serviceBlank);const [busy,setBusy]=useState(false);const toast=useToast();const open=s=>{setEdit(s||'new');setForm(s||serviceBlank);};const change=e=>setForm(v=>({...v,[e.target.name]:e.target.value}));const save=async e=>{e.preventDefault();setBusy(true);try{await request(edit==='new'?'post':'put',edit==='new'?'/admin/services':`/admin/services/${edit.id}`,form);toast('Service saved.');setEdit(null);refresh();}catch(err){toast(getError(err),'error');}finally{setBusy(false);}};const disable=async s=>{if(!window.confirm(`Disable ${s.service_name}? Existing tickets remain on record.`))return;try{await request('delete',`/admin/services/${s.id}`);toast('Service disabled.');refresh();}catch(e){toast(getError(e),'error');}};return <><PageHeading title="Registrar Services" subtitle="Configure available transactions, queue codes, and processing estimates." actions={<button className="btn-primary" onClick={()=>open(null)}><Plus size={17}/> New Service</button>}/><ErrorBox message={error} retry={refresh}/><Card>{loading?<Spinner/>:(data||[]).length?table(['Service','Code / Prefix','Estimated Time','Status','Actions'],data,s=><tr key={s.id}><td><div className="font-semibold text-slate-800">{s.service_name}</div><div className="max-w-sm text-xs">{s.description||'No description'}</div></td><td><span className="font-mono text-xs">{s.service_code} · {s.queue_prefix}</span></td><td>{s.estimated_minutes} min</td><td><Badge value={Number(s.is_active)?'active':'inactive'}/></td><td><div className="flex gap-2"><button className="btn-secondary !px-3 !py-1.5" onClick={()=>open(s)}>Edit</button>{Number(s.is_active)&&<button className="btn-danger !px-3 !py-1.5" onClick={()=>disable(s)}>Disable</button>}</div></td></tr>):<Empty/>}</Card>{edit&&<Modal title={edit==='new'?'Create Service':'Edit Service'} onClose={()=>setEdit(null)}><ActionForm submit={save} busy={busy} cancel={()=>setEdit(null)}><Field label="Service name" name="service_name" value={form.service_name} onChange={change} required/><div className="grid grid-cols-2 gap-3"><Field label="Service code" name="service_code" value={form.service_code} onChange={change} required/><Field label="Ticket prefix" name="queue_prefix" value={form.queue_prefix} onChange={change} required/></div><label className="block"><span className="field-label">Description</span><textarea className="field" rows={3} name="description" value={form.description||''} onChange={change}/></label><Field label="Estimated minutes per ticket" name="estimated_minutes" type="number" min="1" max="240" value={form.estimated_minutes} onChange={change} required/><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(Number(form.is_active))} onChange={e=>setForm(f=>({...f,is_active:e.target.checked?1:0}))}/> Active service</label></ActionForm></Modal>}</>}
+const counterBlank={counter_number:'',counter_name:'',is_active:1,service_ids:[]};
+export function CountersManagement(){const {data,loading,error,refresh}=useRemote('/counters');const {data:services}=useRemote('/admin/services');const [edit,setEdit]=useState(null);const [form,setForm]=useState(counterBlank);const [busy,setBusy]=useState(false);const toast=useToast();const open=c=>{setEdit(c||'new');setForm(c?{...c,service_ids:c.service_ids||[]}:counterBlank);};const change=e=>setForm(f=>({...f,[e.target.name]:e.target.value}));const save=async e=>{e.preventDefault();setBusy(true);try{await request(edit==='new'?'post':'put',edit==='new'?'/counters':`/counters/${edit.id}`,form);toast('Counter saved.');setEdit(null);refresh();}catch(e){toast(getError(e),'error');}finally{setBusy(false);}};const disable=async c=>{if(!window.confirm(`Disable Counter ${c.counter_number}?`))return;try{await request('delete',`/counters/${c.id}`);toast('Counter disabled.');refresh();}catch(e){toast(getError(e),'error');}};return <><PageHeading title="Service Counters" subtitle="Assign service categories to the available registrar counters." actions={<button className="btn-primary" onClick={()=>open(null)}><Plus size={17}/> Add Counter</button>}/><ErrorBox message={error} retry={refresh}/><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{loading?<Spinner/>:(data||[]).map(c=><Card key={c.id} className="p-6"><div className="flex justify-between"><div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-50 text-primary-700"><Monitor size={26}/></div><Badge value={Number(c.is_active)?'active':'inactive'}/></div><h3 className="mt-5 text-xl font-bold">{c.counter_name}</h3><p className="mt-1 text-sm text-slate-500">Counter #{c.counter_number}</p><p className="mt-4 min-h-14 text-sm text-slate-500">{(services||[]).filter(s=>(c.service_ids||[]).includes(Number(s.id))).map(s=>s.service_name).join(' · ')||'No assigned services'}</p><div className="mt-5 flex gap-2 border-t pt-4"><button className="btn-secondary" onClick={()=>open(c)}><Pencil size={15}/> Edit</button>{Number(c.is_active)&&<button className="btn-danger" onClick={()=>disable(c)}>Disable</button>}</div></Card>)}</div>{edit&&<Modal title={edit==='new'?'Add Counter':'Edit Counter'} onClose={()=>setEdit(null)}><ActionForm submit={save} busy={busy} cancel={()=>setEdit(null)}><div className="grid grid-cols-2 gap-3"><Field label="Counter number" name="counter_number" value={form.counter_number} onChange={change} required/><Field label="Counter name" name="counter_name" value={form.counter_name} onChange={change} required/></div><div><div className="field-label">Services handled</div><div className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-3">{(services||[]).map(s=><label key={s.id} className="flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50"><input type="checkbox" checked={(form.service_ids||[]).includes(Number(s.id))} onChange={e=>setForm(v=>({...v,service_ids:e.target.checked?[...v.service_ids,Number(s.id)]:v.service_ids.filter(x=>x!==Number(s.id))}))}/>{s.service_name}</label>)}</div></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(Number(form.is_active))} onChange={e=>setForm(v=>({...v,is_active:e.target.checked?1:0}))}/> Active counter</label></ActionForm></Modal>}</>}
+export function AllQueues(){const toast=useToast();const [status,setStatus]=useState('');const [search,setSearch]=useState('');const [date,setDate]=useState(()=>new Date().toLocaleDateString('en-CA'));const [page,setPage]=useState(1);const qs=new URLSearchParams({page:String(page),limit:'20'});if(status)qs.set('status',status);if(search)qs.set('search',search);if(date)qs.set('date',date);const {data,loading,error,refresh}=useRemote(`/queues?${qs}`);const priority=async(q,value)=>{try{await request('patch',`/queues/${q.id}/priority`,{priority_level:Number(value)});toast('Ticket priority updated.');refresh();}catch(e){toast(getError(e),'error');}};return <><PageHeading title="Queue Monitor" subtitle="Track tickets across registrar services and counters." actions={<RefreshButton onClick={()=>refresh()}/>}/><ErrorBox message={error} retry={refresh}/><Card><div className="grid gap-3 p-5 md:grid-cols-4"><div className="md:col-span-2"><SearchField value={search} onChange={v=>{setSearch(v);setPage(1);}} placeholder="Ticket, student name, or student number"/></div><select className="field" value={status} onChange={e=>{setStatus(e.target.value);setPage(1);}}><option value="">All statuses</option>{['waiting','called','serving','completed','skipped','cancelled'].map(s=><option key={s}>{s}</option>)}</select><input className="field" aria-label="Queue date" type="date" value={date} onChange={e=>{setDate(e.target.value);setPage(1);}}/></div>{loading?<Spinner/>:(data?.items||[]).length?table(['Ticket','Student','Service','Counter','Status','Priority','Created'],data.items,q=><tr key={q.id}><td className="font-bold !text-primary-700">{q.queue_number}</td><td>{q.student_name}<div className="text-xs">{q.student_number}</div></td><td>{q.service_name}</td><td>{q.counter_number||<BlankCell/>}</td><td><Badge value={q.status}/></td><td>{q.status==='waiting'?<select className="field !w-auto !py-1.5" aria-label={`Priority for ${q.queue_number}`} value={Number(q.priority_level)} onChange={e=>priority(q,e.target.value)}><option value={0}>Normal</option><option value={1}>Priority</option><option value={2}>Urgent</option></select>:Number(q.priority_level)?'Priority':'—'}</td><td>{shortDate(q.created_at)}</td></tr>):<Empty title="No matching tickets" text="Try another date, status or search."/>}<div className="flex items-center justify-between border-t px-5 py-4 text-sm"><span className="text-slate-500">{number(data?.total)} total tickets</span><div className="flex gap-2"><button disabled={page<=1} onClick={()=>setPage(p=>p-1)} className="btn-secondary disabled:opacity-40">Previous</button><span className="px-2 py-2.5">{page}</span><button disabled={page*20>=Number(data?.total||0)} onClick={()=>setPage(p=>p+1)} className="btn-secondary disabled:opacity-40">Next</button></div></div></Card></>}
+export function Reports(){const [days,setDays]=useState(14);const {data,loading,error,refresh}=useRemote(`/reports/overview?days=${days}`);const m=data?.metrics||{};return <><PageHeading title="Reports & Analytics" subtitle="Analyze student service volume, speed, and staff performance." actions={<><select aria-label="Reporting period" className="field !w-auto" value={days} onChange={e=>setDays(Number(e.target.value))}><option value={7}>Last 7 days</option><option value={14}>Last 14 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option></select><a className="btn-secondary" href={`${API_BASE}/reports/export?days=${days}`}><ArrowDownToLine size={16}/> Export CSV</a><button className="btn-secondary" onClick={()=>window.print()}><FileText size={16}/> Print / PDF</button></>}/><ErrorBox message={error} retry={refresh}/>{loading?<Spinner/>:<><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Stat icon={Ticket} label="Tickets" value={number(m.tickets)}/><Stat icon={CheckCircle2} label="Completed" value={number(m.completed)} color="green"/><Stat icon={Clock3} label="Avg. Waiting" value={`${Math.round(Number(m.avg_wait||0))} min`} color="amber"/><Stat icon={Timer} label="Avg. Service" value={`${Math.round(Number(m.avg_service||0))} min`} color="violet"/></div><Card title="Daily Queue Volume" className="mt-6"><div className="h-80 p-5">{data?.trend?.length?<ResponsiveContainer width="100%" height="100%"><LineChart data={data.trend}><CartesianGrid stroke="#e2e8f0" vertical={false}/><XAxis dataKey="day" tick={{fontSize:11}} tickFormatter={d=>d.slice(5)}/><YAxis allowDecimals={false}/><Tooltip/><Line dataKey="tickets" stroke="#0284c7" strokeWidth={3} name="Tickets"/><Line dataKey="completed" stroke="#22c55e" strokeWidth={2} name="Completed"/></LineChart></ResponsiveContainer>:<Empty title="No records for this period"/>}</div></Card><div className="mt-6 grid gap-6 xl:grid-cols-2"><Card title="Services Breakdown">{table(['Service','Tickets','Completed'],data?.services||[],s=><tr key={s.name}><td>{s.name}</td><td>{s.tickets}</td><td>{s.completed||0}</td></tr>)}</Card><Card title="Staff Performance">{table(['Staff','Handled','Completed','Avg. Min'],data?.staff||[],s=><tr key={s.employee_number}><td>{s.name}</td><td>{s.handled}</td><td>{s.completed||0}</td><td>{s.avg_minutes||0}</td></tr>)}</Card></div></>}</>}
+const blankAnnouncement={title:'',message:'',is_active:1};
+export function AnnouncementsAdmin(){const {data,loading,error,refresh}=useRemote('/announcements/manage');const [edit,setEdit]=useState(null);const [form,setForm]=useState(blankAnnouncement);const [busy,setBusy]=useState(false);const toast=useToast();const open=a=>{setEdit(a||'new');setForm(a||blankAnnouncement);};const change=e=>setForm(f=>({...f,[e.target.name]:e.target.value}));const save=async e=>{e.preventDefault();setBusy(true);try{await request(edit==='new'?'post':'put',edit==='new'?'/announcements':`/announcements/${edit.id}`,form);toast('Announcement saved.');setEdit(null);refresh();}catch(err){toast(getError(err),'error');}finally{setBusy(false);}};const remove=async a=>{if(!window.confirm(`Delete "${a.title}"?`))return;try{await request('delete',`/announcements/${a.id}`);toast('Announcement removed.');refresh();}catch(e){toast(getError(e),'error');}};return <><PageHeading title="Announcements" subtitle="Communicate important registrar information." actions={<button onClick={()=>open(null)} className="btn-primary"><Plus size={17}/> New Announcement</button>}/><ErrorBox message={error} retry={refresh}/><div className="space-y-4">{loading?<Spinner/>:(data||[]).length?data.map(a=><Card key={a.id} className="p-6"><div className="flex items-start justify-between gap-3"><div><div className="flex items-center gap-3"><h3 className="font-bold">{a.title}</h3><Badge value={Number(a.is_active)?'active':'inactive'}/></div><p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-600">{a.message}</p><p className="mt-4 text-xs text-slate-400">By {a.author} · {shortDate(a.created_at)}</p></div><div className="flex gap-2"><button aria-label={`Edit ${a.title}`} onClick={()=>open(a)} className="btn-secondary !p-2"><Pencil size={16}/></button><button aria-label={`Delete ${a.title}`} onClick={()=>remove(a)} className="btn-danger !p-2"><Trash2 size={16}/></button></div></div></Card>):<Card><Empty/></Card>}</div>{edit&&<Modal title={edit==='new'?'Post Announcement':'Edit Announcement'} onClose={()=>setEdit(null)}><ActionForm submit={save} busy={busy} cancel={()=>setEdit(null)}><Field label="Title" name="title" value={form.title} onChange={change} required/><label className="block"><span className="field-label">Message</span><textarea rows={5} className="field" name="message" value={form.message} onChange={change} required/></label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(Number(form.is_active))} onChange={e=>setForm(v=>({...v,is_active:e.target.checked?1:0}))}/> Publish immediately</label></ActionForm></Modal>}</>}
+export function AuditLogs(){const {data,loading,error,refresh}=useRemote('/audit-logs');return <><PageHeading title="Audit Logs" subtitle="Recent system and account activity." actions={<RefreshButton onClick={()=>refresh()}/>}/><ErrorBox message={error} retry={refresh}/><Card>{loading?<Spinner/>:(data||[]).length?table(['Time','Actor','Action','Entity','Details'],data,(a)=><tr key={a.id}><td className="whitespace-nowrap">{shortDate(a.created_at)}</td><td>{a.full_name||'System'}</td><td><span className="font-mono text-xs">{a.action}</span></td><td>{a.entity_type||'—'} {a.entity_id||''}</td><td>{a.details||<BlankCell/>}</td></tr>):<Empty/>}</Card></>}
+export function ResetRequests(){const {data,loading,error,refresh}=useRemote('/password-reset-requests');const [reset,setReset]=useState(null);return <><PageHeading title="Password Reset Requests" subtitle="Verify account identity in person before assigning a new temporary password."/><ErrorBox message={error} retry={refresh}/><Card>{loading?<Spinner/>:(data||[]).length?table(['Account','Username','Role','Requested','Action'],data,r=><tr key={r.id}><td className="font-semibold !text-slate-800">{r.full_name}</td><td>{r.username}</td><td className="capitalize">{r.role}</td><td>{shortDate(r.requested_at)}</td><td>{r.role==='admin'?<span className="text-xs">Use CLI recovery</span>:<button className="btn-primary !py-2" onClick={()=>setReset({kind:r.role,item:{id:r.staff_id||r.student_id,full_name:r.full_name}})}>Reset password</button>}</td></tr>):<Empty title="No pending requests" text="Password reset requests will appear here."/>}</Card>{reset&&<PasswordReset target={reset} close={()=>setReset(null)} onSaved={refresh}/>}</>}
+export function SystemSettings(){const {data,loading,error,refresh}=useRemote('/settings');const [form,setForm]=useState(null);const [busy,setBusy]=useState(false);const toast=useToast();const values=form||data||{};const change=e=>setForm(v=>({...data,...v,[e.target.name]:e.target.value}));const save=async e=>{e.preventDefault();setBusy(true);try{await request('put','/settings',values);toast('Settings saved.');setForm(null);refresh();}catch(err){toast(getError(err),'error');}finally{setBusy(false);}};return <><PageHeading title="System Settings" subtitle="Customize office information, operating hours, and ticket rules."/><ErrorBox message={error} retry={refresh}/>{loading?<Spinner/>:<Card className="max-w-3xl p-7"><form onSubmit={save} className="space-y-5"><Field label="Registrar office name" name="office_name" value={values.office_name} onChange={change} required/><div className="grid grid-cols-2 gap-4"><Field label="Opening time" name="opening_time" type="time" value={values.opening_time} onChange={change}/><Field label="Closing time" name="closing_time" type="time" value={values.closing_time} onChange={change}/></div><SelectField label="Queue numbering" name="queue_reset_daily" value={values.queue_reset_daily} onChange={change}><option value="1">Restart every day</option><option value="0">Continue numbering across days</option></SelectField><SelectField label="Student eligibility" name="allow_unverified_students" value={values.allow_unverified_students} onChange={change}><option value="1">Automatically verify new student accounts (demo / open access)</option><option value="0">Require administrator verification</option></SelectField><label className="block"><span className="field-label">Public display message</span><textarea className="field" rows={3} name="announcement_ticker" value={values.announcement_ticker||''} onChange={change}/></label><SelectField label="Queue operations" name="queue_suspended" value={values.queue_suspended} onChange={change}><option value="0">Accept new tickets and calls</option><option value="1">Suspend new tickets and calls</option></SelectField><SelectField label="Office hours enforcement" name="enforce_office_hours" value={values.enforce_office_hours} onChange={change}><option value="0">Disabled (development/demo)</option><option value="1">Only issue tickets during office hours</option></SelectField><div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">For a live campus rollout, require student identity verification and configure office policies before accepting real queue requests.</div><button className="btn-primary" disabled={busy}>{busy?'Saving...':'Save system settings'}</button></form></Card>}</>}
